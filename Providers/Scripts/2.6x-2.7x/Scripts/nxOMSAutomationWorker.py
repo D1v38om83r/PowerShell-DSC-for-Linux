@@ -11,6 +11,7 @@ import signal
 import time
 import logging
 import logging.handlers
+import pwd
 
 import imp
 protocol = imp.load_source('protocol', '../protocol.py')
@@ -45,8 +46,10 @@ def set_marshall_helper(WorkspaceId, Enabled, AzureDnsAgentSvcZone, mock_worker_
         try:
             if not os.path.isdir(WORKER_STATE_DIR):
                 os.mkdir(WORKER_STATE_DIR)
+            os.chmod(WORKER_STATE_DIR, FILE_PERMISSION_LEVEL)
             if not os.path.isdir(WORKING_DIRECTORY_PATH):
                 os.makedirs(WORKING_DIRECTORY_PATH)
+            os.chmod(WORKING_DIRECTORY_PATH, FILE_PERMISSION_LEVEL)
             oms_workspace_id, agent_id = read_oms_primary_workspace_config_file()
             # If both proxy files exist use the new one
             # If neither exist use the new path, path will have no file in it, but no file means no proxy set up
@@ -83,10 +86,10 @@ def set_marshall_helper(WorkspaceId, Enabled, AzureDnsAgentSvcZone, mock_worker_
         log(DEBUG, "Linux Hybrid Worker registration succeeded")
         try:
             # Kill hybrid worker if its already running
-            kill_hybrid_worker()
+            kill_hybrid_worker(WorkspaceId)
 
             # Start the worker again
-            start_daemon(["python", HYBRID_WORKER_START_PATH, WORKER_CONF_FILE_PATH, WorkspaceId,
+            start_daemon(["sudo", "-u", AUTOMATION_USER, "python", HYBRID_WORKER_START_PATH, WORKER_CONF_FILE_PATH, WorkspaceId,
                           read_resoruce_version_file()])
 
             # Wait for the worker process to actually start
@@ -109,7 +112,7 @@ def set_marshall_helper(WorkspaceId, Enabled, AzureDnsAgentSvcZone, mock_worker_
     else:
         # enabled is set to false
         try:
-            kill_hybrid_worker()
+            kill_hybrid_worker(WorkspaceId)
             if os.path.isfile(WORKER_CONF_FILE_PATH):
                 os.remove(WORKER_CONF_FILE_PATH)
             if os.path.isfile(WORKER_STATE_FILE_PATH):
@@ -200,6 +203,10 @@ PROXY_CONF_PATH_NEW="/etc/opt/microsoft/omsagent/proxy.conf"
 KEYRING_PATH="/etc/opt/omi/conf/omsconfig/keyring.gpg"
 LOCAL_LOG_LOCATION = "/var/opt/microsoft/omsagent/log/nxOMSAutomationWorker.log"
 
+# permisson level rw- rw- r--
+FILE_PERMISSION_LEVEL = 0o664
+
+AUTOMATION_USER = "nxautomation"
 
 def is_oms_primary_workspace(mof_workspace_id):
     """
@@ -221,6 +228,7 @@ def is_oms_primary_workspace(mof_workspace_id):
 def read_worker_state():
     # Reads the state.config file and returns the values of pid, workspace_id, resource_running_version
     if os.path.isfile(WORKER_STATE_FILE_PATH):
+        os.chmod(WORKER_STATE_FILE_PATH, FILE_PERMISSION_LEVEL)
         state = ConfigParser.ConfigParser()
         try:
             state.read(WORKER_STATE_FILE_PATH)
@@ -298,21 +306,29 @@ def verify_hybrid_worker():
     return -1
 
 
-def kill_hybrid_worker():
+def kill_hybrid_worker(workspace_id):
     """Kill hybrid worker process if it exists
-    Returns:
-        true if it was running and killed
-        false if it was not running
     Exceptions:
         throws exception if process was running and could not be killed
     """
-    pid = verify_hybrid_worker()
-    if pid > 0:
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except Exception, exception:
-            log(ERROR, "Could not kill Linux Hybrid Worker process pid: " + pid + " " + exception.message)
-            raise exception
+    if nxautomation_user_exists():
+        pid = verify_hybrid_worker()
+        subprocess.call(["sudo", "pkill", "-u", AUTOMATION_USER, "--full", workspace_id])
+        # can't depend on the return value to ensure that the process was killed since it pattern matches
+        retry_pid = verify_hybrid_worker()
+        if pid > 0 and retry_pid > 0:
+            # worker was not killed
+            log(ERROR, "Could not kill Linux Hybrid Worker process pid: " + pid)
+            raise Exception
+    else:
+        # nxautomation user does not exist, fall back to old behavior
+        pid = verify_hybrid_worker()
+        if pid > 0:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except Exception, exception:
+                log(ERROR, "Could not kill Linux Hybrid Worker process pid: " + pid + " " + exception.message)
+                raise exception
 
 def read_resoruce_version_file():
     version_file_handle = open(DSC_RESOURCE_VERSION_FILE, 'r')
@@ -329,6 +345,21 @@ def worker_is_latest():
     log(DEBUG, "running version is: " + runningversion)
     log(DEBUG, "latest available version is: " + latest_available_version)
     return runningversion == latest_available_version
+
+def nxautomation_user_exists():
+    """
+    Tests if the user nxautomation exists on the machine
+    Newer OMS agent installs will have that user
+    :return: True if user "nxautomation" exists on the system, False otherwise
+    """
+    try:
+        pwd.getpwnam(AUTOMATION_USER)
+    except KeyError:
+        # if the user was not found
+        log(INFO, "%s was NOT found on the system" %(AUTOMATION_USER))
+        return False
+    log(INFO, "%s was found on the system" %(AUTOMATION_USER))
+    return True
 
 def start_daemon(args):
     # Forks a subprocess from args

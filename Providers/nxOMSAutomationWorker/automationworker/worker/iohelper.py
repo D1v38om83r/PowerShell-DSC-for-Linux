@@ -6,7 +6,8 @@
 
 import os
 
-os.umask(077)
+# umask will set permission to by default rwx rwx r--
+os.umask(003)
 
 
 def write_to_file(file_path, data, mode="wb"):
