@@ -17,6 +17,14 @@ import inspect
 import copy
 import sha
 import fnmatch
+import codecs
+import md5
+import base64
+import socket
+import thread
+import signal
+import shutil
+
 def opened_w_error(filename, mode="r"):
     """
     This context ensures the file is closed.
@@ -162,11 +170,13 @@ nxMySqlUser=imp.load_source('nxMySqlUser', './Scripts/nxMySqlUser.py')
 nxMySqlGrant=imp.load_source('nxMySqlGrant', './Scripts/nxMySqlGrant.py')
 nxMySqlDatabase=imp.load_source('nxMySqlDatabase', './Scripts/nxMySqlDatabase.py')
 nxOMSSyslog=imp.load_source('nxOMSSyslog','./Scripts/nxOMSSyslog.py')
-nxOMSAgent=imp.load_source('nxOMSAgent','./Scripts/nxOMSAgent.py')
+nxOMSPerfCounter=imp.load_source('nxOMSPerfCounter','./Scripts/nxOMSPerfCounter.py')
 nxOMSCustomLog=imp.load_source('nxOMSCustomLog','./Scripts/nxOMSCustomLog.py')
 nxOMSKeyMgmt=imp.load_source('nxOMSKeyMgmt','./Scripts/nxOMSKeyMgmt.py')
 nxFileInventory=imp.load_source('nxFileInventory', './Scripts/nxFileInventory.py')
-
+nxOMSGenerateInventoryMof=imp.load_source('nxOMSGenerateInventoryMof', './Scripts/nxOMSGenerateInventoryMof.py')
+nxNPMD=imp.load_source('nxNPMD','./Scripts/nxOMSAgentNPMConfig.py')
+nxOMSAutomationWorker=imp.load_source('nxOMSAutomationWorker', './Scripts/nxOMSAutomationWorker.py')
 
 class nxUserTestCases(unittest2.TestCase):
     """
@@ -3295,9 +3305,9 @@ nxOMSSyslogTestCases = unittest2.skipUnless(os.system('ps -ef | grep -v grep | g
                                             )(nxOMSSyslogTestCases)
 
 
-class nxOMSAgentTestCases(unittest2.TestCase):
+class nxOMSPerfCounterTestCases(unittest2.TestCase):
     """
-    Test cases for nxOMSAgent.py
+    Test cases for nxOMSPerfCounter.py
     """
     def setUp(self):
         """
@@ -3312,182 +3322,183 @@ class nxOMSAgentTestCases(unittest2.TestCase):
         os.system('mv /etc/opt/microsoft/omsagent/conf/omsagent.conf.bak /etc/opt/microsoft/omsagent/conf/omsagent.conf')            
 
         
-    def make_MI(self,retval,HeartbeatIntervalSeconds, PerfObject):
+    def make_MI(self, retval, Name, HeartbeatIntervalSeconds, PerfCounterObject):
         d=dict()
         d.clear()
-        if PerfObject == None :
-            d['PerfObject'] = None
+        if PerfCounterObject == None :
+            d['PerfCounterObject'] = None
         else :
-            for perf in PerfObject:
-                perf['PerformanceCounter'] =  nxOMSAgent.protocol.MI_StringA(perf['PerformanceCounter'])
-                perf['InstanceName']=nxOMSAgent.protocol.MI_String(perf['InstanceName'])
-                perf['AllInstances']=nxOMSAgent.protocol.MI_Boolean(perf['AllInstances'])
-                perf['IntervalSeconds']=nxOMSAgent.protocol.MI_Uint16(perf['IntervalSeconds'])
-                perf['ObjectName']=nxOMSAgent.protocol.MI_String(perf['ObjectName'])
-            d['PerfObject'] = nxOMSAgent.protocol.MI_InstanceA(PerfObject)
-        d['HeartbeatIntervalSeconds']=nxOMSAgent.protocol.MI_Uint16(HeartbeatIntervalSeconds)
+            for perf in PerfCounterObject:
+                perf['PerformanceCounter'] =  nxOMSPerfCounter.protocol.MI_StringA(perf['PerformanceCounter'])
+                perf['InstanceName']=nxOMSPerfCounter.protocol.MI_String(perf['InstanceName'])
+                perf['AllInstances']=nxOMSPerfCounter.protocol.MI_Boolean(perf['AllInstances'])
+                perf['IntervalSeconds']=nxOMSPerfCounter.protocol.MI_Uint16(perf['IntervalSeconds'])
+                perf['ObjectName']=nxOMSPerfCounter.protocol.MI_String(perf['ObjectName'])
+            d['PerfCounterObject'] = nxOMSPerfCounter.protocol.MI_InstanceA(PerfCounterObject)
+        d['HeartbeatIntervalSeconds']=nxOMSPerfCounter.protocol.MI_Uint16(HeartbeatIntervalSeconds)
+        d['Name']=nxOMSPerfCounter.protocol.MI_String(Name)
         return retval,d
     
-    def testSetOMSAgent_add(self):
-        d={'HeartbeatIntervalSeconds':600,'PerfObject':[{'InstanceName':'*', 'IntervalSeconds':600, 'AllInstances':True,
+    def testSetOMSPerfCounter_add(self):
+        d={'Name':'testPerfCounter','HeartbeatIntervalSeconds':600,'PerfCounterObject':[{'InstanceName':'*', 'IntervalSeconds':600, 'AllInstances':True,
             'PerformanceCounter':['FreeMegabytes','PercentFreeSpace','PercentUsedSpace','PercentFreeInodes',
             'PercentUsedInodes','BytesPerSecond','ReadBytesPerSecond','WriteBytesPerSecond'],
             'ObjectName':'Logical Disk'},{'InstanceName':'*', 'IntervalSeconds':60, 'AllInstances':True,
             'PerformanceCounter':['% Processor Time','% DPC Time','% Idle Time','% Nice Time'],
             'ObjectName':'Processor'}]}
-        for perf in d['PerfObject']:
-            perf['PerformanceCounter'] = nxOMSAgent.protocol.MI_StringA(perf['PerformanceCounter'])
-            perf['InstanceName']=nxOMSAgent.protocol.MI_String(perf['InstanceName'])
-            perf['AllInstances']=nxOMSAgent.protocol.MI_Boolean(perf['AllInstances'])
-            perf['IntervalSeconds']=nxOMSAgent.protocol.MI_Uint16(perf['IntervalSeconds'])
-            perf['ObjectName']=nxOMSAgent.protocol.MI_String(perf['ObjectName'])
-        self.assertTrue(nxOMSAgent.Set_Marshall(**d) == [0],'Set('+repr(d)+') should return == [0]') 
+        for perf in d['PerfCounterObject']:
+            perf['PerformanceCounter'] = nxOMSPerfCounter.protocol.MI_StringA(perf['PerformanceCounter'])
+            perf['InstanceName']=nxOMSPerfCounter.protocol.MI_String(perf['InstanceName'])
+            perf['AllInstances']=nxOMSPerfCounter.protocol.MI_Boolean(perf['AllInstances'])
+            perf['IntervalSeconds']=nxOMSPerfCounter.protocol.MI_Uint16(perf['IntervalSeconds'])
+            perf['ObjectName']=nxOMSPerfCounter.protocol.MI_String(perf['ObjectName'])
+        self.assertTrue(nxOMSPerfCounter.Set_Marshall(**d) == [0],'Set('+repr(d)+') should return == [0]') 
 
-    def testGetOMSAgent_add(self):
-        d={'HeartbeatIntervalSeconds':600,'PerfObject':[{'InstanceName':'*', 'IntervalSeconds':600, 'AllInstances':True,
+    def testGetOMSPerfCounter_add(self):
+        d={'Name':'testPerfCounter','HeartbeatIntervalSeconds':600,'PerfCounterObject':[{'InstanceName':'*', 'IntervalSeconds':600, 'AllInstances':True,
             'PerformanceCounter':['FreeMegabytes','PercentFreeSpace','PercentUsedSpace','PercentFreeInodes',
             'PercentUsedInodes','BytesPerSecond','ReadBytesPerSecond','WriteBytesPerSecond'],
             'ObjectName':'Logical Disk'},{'InstanceName':'*', 'IntervalSeconds':60, 'AllInstances':True,
             'PerformanceCounter':['% Processor Time','% DPC Time','% Idle Time','% Nice Time'],
             'ObjectName':'Processor'}]}
-        for perf in d['PerfObject']:
-            perf['PerformanceCounter'] = nxOMSAgent.protocol.MI_StringA(perf['PerformanceCounter'])
-            perf['InstanceName']=nxOMSAgent.protocol.MI_String(perf['InstanceName'])
-            perf['AllInstances']=nxOMSAgent.protocol.MI_Boolean(perf['AllInstances'])
-            perf['IntervalSeconds']=nxOMSAgent.protocol.MI_Uint16(perf['IntervalSeconds'])
-            perf['ObjectName']=nxOMSAgent.protocol.MI_String(perf['ObjectName'])
+        for perf in d['PerfCounterObject']:
+            perf['PerformanceCounter'] = nxOMSPerfCounter.protocol.MI_StringA(perf['PerformanceCounter'])
+            perf['InstanceName']=nxOMSPerfCounter.protocol.MI_String(perf['InstanceName'])
+            perf['AllInstances']=nxOMSPerfCounter.protocol.MI_Boolean(perf['AllInstances'])
+            perf['IntervalSeconds']=nxOMSPerfCounter.protocol.MI_Uint16(perf['IntervalSeconds'])
+            perf['ObjectName']=nxOMSPerfCounter.protocol.MI_String(perf['ObjectName'])
         e=copy.deepcopy(d)
-        t={'HeartbeatIntervalSeconds':600,'PerfObject':[{'InstanceName':'*', 'IntervalSeconds':600, 'AllInstances':True,
+        t={'Name':'testPerfCounter','HeartbeatIntervalSeconds':600,'PerfCounterObject':[{'InstanceName':'*', 'IntervalSeconds':600, 'AllInstances':True,
             'PerformanceCounter':['FreeMegabytes','PercentFreeSpace','PercentUsedSpace','PercentFreeInodes',
             'PercentUsedInodes','BytesPerSecond','ReadBytesPerSecond','WriteBytesPerSecond'],
             'ObjectName':'Logical Disk'},{'InstanceName':'*', 'IntervalSeconds':60, 'AllInstances':True,
             'PerformanceCounter':['% Processor Time','% DPC Time','% Idle Time','% Nice Time'],
             'ObjectName':'Processor'}]}
-        self.assertTrue(nxOMSAgent.Set_Marshall(**d) == [0],'Set('+repr(d)+') should return == [0]')
+        self.assertTrue(nxOMSPerfCounter.Set_Marshall(**d) == [0],'Set('+repr(d)+') should return == [0]')
         m=self.make_MI(0,**t)
-        g=nxOMSAgent.Get_Marshall(**e)
+        g=nxOMSPerfCounter.Get_Marshall(**e)
         self.assertTrue(check_values(g, m)  ==  True, \
         'Get '+repr(g)+' should return == '+repr(m)+'')
 
-    def testSetOMSAgent_del(self):
-        d={'HeartbeatIntervalSeconds':600,'PerfObject':[]}
-        for perf in d['PerfObject']:
-            perf['PerformanceCounter'] = nxOMSAgent.protocol.MI_StringA(perf['PerformanceCounter'])
-            perf['InstanceName']=nxOMSAgent.protocol.MI_String(perf['InstanceName'])
-            perf['AllInstances']=nxOMSAgent.protocol.MI_Boolean(perf['AllInstances'])
-            perf['IntervalSeconds']=nxOMSAgent.protocol.MI_Uint16(perf['IntervalSeconds'])
-            perf['ObjectName']=nxOMSAgent.protocol.MI_String(perf['ObjectName'])
-        self.assertTrue(nxOMSAgent.Set_Marshall(**d) == [0],'Set('+repr(d)+') should return == [0]') 
+    def testSetOMSPerfCounter_del(self):
+        d={'Name':'testPerfCounter','HeartbeatIntervalSeconds':600,'PerfCounterObject':[]}
+        for perf in d['PerfCounterObject']:
+            perf['PerformanceCounter'] = nxOMSPerfCounter.protocol.MI_StringA(perf['PerformanceCounter'])
+            perf['InstanceName']=nxOMSPerfCounter.protocol.MI_String(perf['InstanceName'])
+            perf['AllInstances']=nxOMSPerfCounter.protocol.MI_Boolean(perf['AllInstances'])
+            perf['IntervalSeconds']=nxOMSPerfCounter.protocol.MI_Uint16(perf['IntervalSeconds'])
+            perf['ObjectName']=nxOMSPerfCounter.protocol.MI_String(perf['ObjectName'])
+        self.assertTrue(nxOMSPerfCounter.Set_Marshall(**d) == [0],'Set('+repr(d)+') should return == [0]') 
 
-    def testGetOMSAgent_del(self):
-        d={'HeartbeatIntervalSeconds':600,'PerfObject':[]}
-        for perf in d['PerfObject']:
-            perf['PerformanceCounter'] = nxOMSAgent.protocol.MI_StringA(perf['PerformanceCounter'])
-            perf['InstanceName']=nxOMSAgent.protocol.MI_String(perf['InstanceName'])
-            perf['AllInstances']=nxOMSAgent.protocol.MI_Boolean(perf['AllInstances'])
-            perf['IntervalSeconds']=nxOMSAgent.protocol.MI_Uint16(perf['IntervalSeconds'])
-            perf['ObjectName']=nxOMSAgent.protocol.MI_String(perf['ObjectName'])
-        self.assertTrue(nxOMSAgent.Set_Marshall(**d) == [0],'Set('+repr(d)+') should return == [0]')
-        t={'HeartbeatIntervalSeconds':600,'PerfObject':[]}
+    def testGetOMSPerfCounter_del(self):
+        d={'Name':'testPerfCounter','HeartbeatIntervalSeconds':600,'PerfCounterObject':[]}
+        for perf in d['PerfCounterObject']:
+            perf['PerformanceCounter'] = nxOMSPerfCounter.protocol.MI_StringA(perf['PerformanceCounter'])
+            perf['InstanceName']=nxOMSPerfCounter.protocol.MI_String(perf['InstanceName'])
+            perf['AllInstances']=nxOMSPerfCounter.protocol.MI_Boolean(perf['AllInstances'])
+            perf['IntervalSeconds']=nxOMSPerfCounter.protocol.MI_Uint16(perf['IntervalSeconds'])
+            perf['ObjectName']=nxOMSPerfCounter.protocol.MI_String(perf['ObjectName'])
+        self.assertTrue(nxOMSPerfCounter.Set_Marshall(**d) == [0],'Set('+repr(d)+') should return == [0]')
+        t={'Name':'testPerfCounter','HeartbeatIntervalSeconds':600,'PerfCounterObject':[]}
         m=self.make_MI(0,**t)
-        g=nxOMSAgent.Get_Marshall(**d)
+        g=nxOMSPerfCounter.Get_Marshall(**d)
         print 'GET '+ repr(g)
         self.assertTrue(check_values(g, m)  ==  True, \
         'Get('+repr(g)+' should return ==['+repr(m)+']')
 
-    def testSetOMSAgent_add_missing_conf_file(self):
+    def testSetOMSPerfCounter_add_missing_conf_file(self):
         os.system('rm /etc/opt/microsoft/omsagent/conf/omsagent.conf')
-        d={'HeartbeatIntervalSeconds':600,'PerfObject':[{'InstanceName':'*', 'IntervalSeconds':600, 'AllInstances':True,
+        d={'Name':'testPerfCounter','HeartbeatIntervalSeconds':600,'PerfCounterObject':[{'InstanceName':'*', 'IntervalSeconds':600, 'AllInstances':True,
             'PerformanceCounter':['FreeMegabytes','PercentFreeSpace','PercentUsedSpace','PercentFreeInodes',
             'PercentUsedInodes','BytesPerSecond','ReadBytesPerSecond','WriteBytesPerSecond'],
             'ObjectName':'Logical Disk'},{'InstanceName':'*', 'IntervalSeconds':60, 'AllInstances':True,
             'PerformanceCounter':['% Processor Time','% DPC Time','% Idle Time','% Nice Time'],
             'ObjectName':'Processor'}]}
-        for perf in d['PerfObject']:
-            perf['PerformanceCounter'] = nxOMSAgent.protocol.MI_StringA(perf['PerformanceCounter'])
-            perf['InstanceName']=nxOMSAgent.protocol.MI_String(perf['InstanceName'])
-            perf['AllInstances']=nxOMSAgent.protocol.MI_Boolean(perf['AllInstances'])
-            perf['IntervalSeconds']=nxOMSAgent.protocol.MI_Uint16(perf['IntervalSeconds'])
-            perf['ObjectName']=nxOMSAgent.protocol.MI_String(perf['ObjectName'])
-        self.assertTrue(nxOMSAgent.Set_Marshall(**d) == [0],'Set('+repr(d)+') should return == [0]') 
+        for perf in d['PerfCounterObject']:
+            perf['PerformanceCounter'] = nxOMSPerfCounter.protocol.MI_StringA(perf['PerformanceCounter'])
+            perf['InstanceName']=nxOMSPerfCounter.protocol.MI_String(perf['InstanceName'])
+            perf['AllInstances']=nxOMSPerfCounter.protocol.MI_Boolean(perf['AllInstances'])
+            perf['IntervalSeconds']=nxOMSPerfCounter.protocol.MI_Uint16(perf['IntervalSeconds'])
+            perf['ObjectName']=nxOMSPerfCounter.protocol.MI_String(perf['ObjectName'])
+        self.assertTrue(nxOMSPerfCounter.Set_Marshall(**d) == [0],'Set('+repr(d)+') should return == [0]') 
 
-    def testSetGetOMSAgent_add_missing_conf_file(self):
+    def testSetGetOMSPerfCounter_add_missing_conf_file(self):
         os.system('rm /etc/opt/microsoft/omsagent/conf/omsagent.conf')
-        d={'HeartbeatIntervalSeconds':600,'PerfObject':[{'InstanceName':'*', 'IntervalSeconds':600, 'AllInstances':True,
+        d={'Name':'testPerfCounter','HeartbeatIntervalSeconds':600,'PerfCounterObject':[{'InstanceName':'*', 'IntervalSeconds':600, 'AllInstances':True,
             'PerformanceCounter':['FreeMegabytes','PercentFreeSpace','PercentUsedSpace','PercentFreeInodes',
             'PercentUsedInodes','BytesPerSecond','ReadBytesPerSecond','WriteBytesPerSecond'],
             'ObjectName':'Logical Disk'},{'InstanceName':'*', 'IntervalSeconds':60, 'AllInstances':True,
             'PerformanceCounter':['% Processor Time','% DPC Time','% Idle Time','% Nice Time'],
             'ObjectName':'Processor'}]}
-        for perf in d['PerfObject']:
-            perf['PerformanceCounter'] = nxOMSAgent.protocol.MI_StringA(perf['PerformanceCounter'])
-            perf['InstanceName']=nxOMSAgent.protocol.MI_String(perf['InstanceName'])
-            perf['AllInstances']=nxOMSAgent.protocol.MI_Boolean(perf['AllInstances'])
-            perf['IntervalSeconds']=nxOMSAgent.protocol.MI_Uint16(perf['IntervalSeconds'])
-            perf['ObjectName']=nxOMSAgent.protocol.MI_String(perf['ObjectName'])
+        for perf in d['PerfCounterObject']:
+            perf['PerformanceCounter'] = nxOMSPerfCounter.protocol.MI_StringA(perf['PerformanceCounter'])
+            perf['InstanceName']=nxOMSPerfCounter.protocol.MI_String(perf['InstanceName'])
+            perf['AllInstances']=nxOMSPerfCounter.protocol.MI_Boolean(perf['AllInstances'])
+            perf['IntervalSeconds']=nxOMSPerfCounter.protocol.MI_Uint16(perf['IntervalSeconds'])
+            perf['ObjectName']=nxOMSPerfCounter.protocol.MI_String(perf['ObjectName'])
         e=copy.deepcopy(d)
-        t={'HeartbeatIntervalSeconds':600,'PerfObject':[{'InstanceName':'*', 'IntervalSeconds':600, 'AllInstances':True,
+        t={'Name':'testPerfCounter','HeartbeatIntervalSeconds':600,'PerfCounterObject':[{'InstanceName':'*', 'IntervalSeconds':600, 'AllInstances':True,
             'PerformanceCounter':['FreeMegabytes','PercentFreeSpace','PercentUsedSpace','PercentFreeInodes',
             'PercentUsedInodes','BytesPerSecond','ReadBytesPerSecond','WriteBytesPerSecond'],
             'ObjectName':'Logical Disk'},{'InstanceName':'*', 'IntervalSeconds':60, 'AllInstances':True,
             'PerformanceCounter':['% Processor Time','% DPC Time','% Idle Time','% Nice Time'],
             'ObjectName':'Processor'}]}
-        self.assertTrue(nxOMSAgent.Set_Marshall(**d) == [0],'Set('+repr(d)+') should return == [0]')
+        self.assertTrue(nxOMSPerfCounter.Set_Marshall(**d) == [0],'Set('+repr(d)+') should return == [0]')
         m=self.make_MI(0,**t)
-        g=nxOMSAgent.Get_Marshall(**e)
+        g=nxOMSPerfCounter.Get_Marshall(**e)
         self.assertTrue(check_values(g, m)  ==  True, \
         'Get '+repr(g)+' should return == '+repr(m)+'')
 
-    def testGetOMSAgent_add_missing_conf_file(self):
+    def testGetOMSPerfCounter_add_missing_conf_file(self):
         os.system('rm /etc/opt/microsoft/omsagent/conf/omsagent.conf')
-        d={'HeartbeatIntervalSeconds':600,'PerfObject':[{'InstanceName':'*', 'IntervalSeconds':600, 'AllInstances':True,
+        d={'Name':'testPerfCounter','HeartbeatIntervalSeconds':600,'PerfCounterObject':[{'InstanceName':'*', 'IntervalSeconds':600, 'AllInstances':True,
             'PerformanceCounter':['FreeMegabytes','PercentFreeSpace','PercentUsedSpace','PercentFreeInodes',
             'PercentUsedInodes','BytesPerSecond','ReadBytesPerSecond','WriteBytesPerSecond'],
             'ObjectName':'Logical Disk'},{'InstanceName':'*', 'IntervalSeconds':60, 'AllInstances':True,
             'PerformanceCounter':['% Processor Time','% DPC Time','% Idle Time','% Nice Time'],
             'ObjectName':'Processor'}]}
-        for perf in d['PerfObject']:
-            perf['PerformanceCounter'] = nxOMSAgent.protocol.MI_StringA(perf['PerformanceCounter'])
-            perf['InstanceName']=nxOMSAgent.protocol.MI_String(perf['InstanceName'])
-            perf['AllInstances']=nxOMSAgent.protocol.MI_Boolean(perf['AllInstances'])
-            perf['IntervalSeconds']=nxOMSAgent.protocol.MI_Uint16(perf['IntervalSeconds'])
-            perf['ObjectName']=nxOMSAgent.protocol.MI_String(perf['ObjectName'])
-        t={'HeartbeatIntervalSeconds':None,'PerfObject':[]}
+        for perf in d['PerfCounterObject']:
+            perf['PerformanceCounter'] = nxOMSPerfCounter.protocol.MI_StringA(perf['PerformanceCounter'])
+            perf['InstanceName']=nxOMSPerfCounter.protocol.MI_String(perf['InstanceName'])
+            perf['AllInstances']=nxOMSPerfCounter.protocol.MI_Boolean(perf['AllInstances'])
+            perf['IntervalSeconds']=nxOMSPerfCounter.protocol.MI_Uint16(perf['IntervalSeconds'])
+            perf['ObjectName']=nxOMSPerfCounter.protocol.MI_String(perf['ObjectName'])
+        t={'Name':'testPerfCounter','HeartbeatIntervalSeconds':None,'PerfCounterObject':[]}
         m=self.make_MI(0,**t)
-        g=nxOMSAgent.Get_Marshall(**d)
+        g=nxOMSPerfCounter.Get_Marshall(**d)
         self.assertTrue(check_values(g, m)  ==  True, \
         'Get '+repr(g)+' should return == '+repr(m)+'')
 
-    def testTestOMSAgent_add_missing_conf_file(self):
+    def testTestOMSPerfCounter_add_missing_conf_file(self):
         os.system('rm /etc/opt/microsoft/omsagent/conf/omsagent.conf')
-        d={'HeartbeatIntervalSeconds':600,'PerfObject':[{'InstanceName':'*', 'IntervalSeconds':600, 'AllInstances':True,
+        d={'Name':'testPerfCounter','HeartbeatIntervalSeconds':600,'PerfCounterObject':[{'InstanceName':'*', 'IntervalSeconds':600, 'AllInstances':True,
             'PerformanceCounter':['FreeMegabytes','PercentFreeSpace','PercentUsedSpace','PercentFreeInodes',
             'PercentUsedInodes','BytesPerSecond','ReadBytesPerSecond','WriteBytesPerSecond'],
             'ObjectName':'Logical Disk'},{'InstanceName':'*', 'IntervalSeconds':60, 'AllInstances':True,
             'PerformanceCounter':['% Processor Time','% DPC Time','% Idle Time','% Nice Time'],
             'ObjectName':'Processor'}]}
-        for perf in d['PerfObject']:
-            perf['PerformanceCounter'] = nxOMSAgent.protocol.MI_StringA(perf['PerformanceCounter'])
-            perf['InstanceName']=nxOMSAgent.protocol.MI_String(perf['InstanceName'])
-            perf['AllInstances']=nxOMSAgent.protocol.MI_Boolean(perf['AllInstances'])
-            perf['IntervalSeconds']=nxOMSAgent.protocol.MI_Uint16(perf['IntervalSeconds'])
-            perf['ObjectName']=nxOMSAgent.protocol.MI_String(perf['ObjectName'])
+        for perf in d['PerfCounterObject']:
+            perf['PerformanceCounter'] = nxOMSPerfCounter.protocol.MI_StringA(perf['PerformanceCounter'])
+            perf['InstanceName']=nxOMSPerfCounter.protocol.MI_String(perf['InstanceName'])
+            perf['AllInstances']=nxOMSPerfCounter.protocol.MI_Boolean(perf['AllInstances'])
+            perf['IntervalSeconds']=nxOMSPerfCounter.protocol.MI_Uint16(perf['IntervalSeconds'])
+            perf['ObjectName']=nxOMSPerfCounter.protocol.MI_String(perf['ObjectName'])
         e=copy.deepcopy(d)
-        t={'HeartbeatIntervalSeconds':600,'PerfObject':[{'InstanceName':'*', 'IntervalSeconds':600, 'AllInstances':True,
+        t={'Name':'testPerfCounter','HeartbeatIntervalSeconds':600,'PerfCounterObject':[{'InstanceName':'*', 'IntervalSeconds':600, 'AllInstances':True,
             'PerformanceCounter':['FreeMegabytes','PercentFreeSpace','PercentUsedSpace','PercentFreeInodes',
             'PercentUsedInodes','BytesPerSecond','ReadBytesPerSecond','WriteBytesPerSecond'],
             'ObjectName':'Logical Disk'},{'InstanceName':'*', 'IntervalSeconds':60, 'AllInstances':True,
             'PerformanceCounter':['% Processor Time','% DPC Time','% Idle Time','% Nice Time'],
             'ObjectName':'Processor'}]}
-        self.assertTrue(nxOMSAgent.Set_Marshall(**d) == [0],'Set('+repr(d)+') should return == [0]')
+        self.assertTrue(nxOMSPerfCounter.Set_Marshall(**d) == [0],'Set('+repr(d)+') should return == [0]')
         m=self.make_MI(0,**t)
-        g=nxOMSAgent.Get_Marshall(**e)
+        g=nxOMSPerfCounter.Get_Marshall(**e)
         self.assertTrue(check_values(g, m)  ==  True, \
         'Get '+repr(g)+' should return == '+repr(m)+'')
 
-nxOMSAgentTestCases = unittest2.skipUnless(os.system('ps -ef | grep -v grep | grep omsagent') ==
-                                            0,'Skipping nxOMSAgentTestCases.   omsagent is not running.' \
-                                            )(nxOMSAgentTestCases)
+nxOMSPerfCounterTestCases = unittest2.skipUnless(os.system('ps -ef | grep -v grep | grep omsagent') ==
+                                            0,'Skipping nxOMSPerfCounterTestCases.   omsagent is not running.' \
+                                            )(nxOMSPerfCounterTestCases)
 
 
 class nxOMSCustomLogTestCases(unittest2.TestCase):
@@ -3573,6 +3584,114 @@ class nxOMSCustomLogTestCases(unittest2.TestCase):
         self.assertTrue(check_values(g, m)  ==  True, \
         'Get('+repr(g)+' should return ==['+repr(m)+']')
     
+class nxOMSGenerateInventoryMofTestCases(unittest2.TestCase):
+    """
+    Test Case for nxOMSGenerateInventoryMof.py
+    """
+
+    original_mof_path = None
+    mock_mof_path = '/tmp/'
+
+    def setUp(self):
+        """
+        Setup test resources
+        """
+        self.original_mof_path = nxOMSGenerateInventoryMof.inventoryMof_path
+        nxOMSGenerateInventoryMof.inventoryMof_path = self.mock_mof_path
+        os.system('rm -rf %s' % self.mock_mof_path + 'generatedinventory.mof')
+        os.system('rm -rf %s' % self.mock_mof_path + 'generatedinventory.conf')
+
+    def tearDown(self):
+        """
+        Remove test resources
+        """
+        nxOMSGenerateInventoryMof.inventoryMof_path = self.original_mof_path
+
+    def make_MI(self, retval, FeatureName, Enable, Instances , RunIntervalInSeconds, Tag , Format , FilterType , Configuration):
+        d = dict()
+        d['FeatureName'] = nxOMSGenerateInventoryMof.protocol.MI_String(FeatureName)
+        d['Enable'] = nxOMSGenerateInventoryMof.protocol.MI_Boolean(Enable)
+        if Instances is None:
+            Instances = []
+        for instance in Instances:
+            instance['InstanceName'] = nxOMSGenerateInventoryMof.protocol.MI_String(instance['InstanceName'])
+            instance['ClassName'] = nxOMSGenerateInventoryMof.protocol.MI_String(instance['ClassName'])
+
+            if instance['Properties'] is not None and len(instance['Properties']):
+                instance['Properties'] = nxOMSGenerateInventoryMof.protocol.MI_StringA(instance['Properties'])
+        d['Instances'] = nxOMSGenerateInventoryMof.protocol.MI_InstanceA(Instances)
+        d['RunIntervalInSeconds'] =  nxOMSGenerateInventoryMof.protocol.MI_Uint64(RunIntervalInSeconds)
+        d['Tag'] = nxOMSGenerateInventoryMof.protocol.MI_String(Tag)
+        d['Format'] = nxOMSGenerateInventoryMof.protocol.MI_String(Format)
+        d['FilterType'] = nxOMSGenerateInventoryMof.protocol.MI_String(FilterType)
+
+        if Configuration is None:
+            Configuration = []
+        if Configuration is not None and len(Configuration):
+            d['Configuration'] = nxOMSGenerateInventoryMof.protocol.MI_StringA(Configuration)
+
+        return retval, d
+
+    def testSetOMSGenerateInventoryMof_multipleinstances(self):
+        d = { 'FeatureName': 'generatedinventory', 'Enable': True, 'Instances': [{ 'InstanceName': 'FileInventory', 'ClassName': 'MSFT_nxFileInventoryResource', 'Properties': [ 'DestinationPath = "/etc/*.conf";', 'Recurse=true;' ] }, { 'InstanceName': 'RegistryInventory', 'ClassName':'MSFT_nxRegistryInventoryResource', 'Properties': [ 'RegistryName=hkeylocal;' ] } ], 'RunIntervalInSeconds':300, 'Tag': 'Test', 'Format':'tsv', 'FilterType':'filter', 'Configuration':['testname = value'] }
+
+        for instance in d['Instances']:
+            instance['InstanceName'] = nxOMSGenerateInventoryMof.protocol.MI_String(instance['InstanceName'])
+            instance['ClassName'] = nxOMSGenerateInventoryMof.protocol.MI_String(instance['ClassName'])
+            instance['Properties'] = nxOMSGenerateInventoryMof.protocol.MI_StringA(instance['Properties'])
+
+        self.assertTrue(nxOMSGenerateInventoryMof.Set_Marshall(**d) == [0],'Set('+repr(d)+') should return == [0]')
+        self.assertTrue(os.path.isfile(self.mock_mof_path + 'generatedinventory' + '.mof'))
+
+
+    def testSetOMSGenerateInventoryMof_noinstances(self):
+        d = { 'FeatureName': 'generatedinventory', 'Enable': True, 'Instances': None }
+        self.assertTrue(nxOMSGenerateInventoryMof.Set_Marshall(**d) == [0],'Set('+repr(d)+') should return == [0]')
+        self.assertTrue(os.path.isfile(self.mock_mof_path + 'generatedinventory' + '.mof'))
+
+
+    def testSetOMSGenerateInventoryMof_EnableisFalse(self):
+        d = { 'FeatureName': 'generatedinventory', 'Enable': False, 'Instances': [{ 'InstanceName': 'FileInventory', 'ClassName': 'MSFT_nxFileInventoryResource', 'Properties': [ 'DestinationPath = "/etc/*.conf";', 'Recurse=true;' ] }, { 'InstanceName': 'RegistryInventory', 'ClassName':'MSFT_nxRegistryInventoryResource', 'Properties': [ 'RegistryName=hkeylocal;' ] } ], 'RunIntervalInSeconds':300, 'Tag': 'Test', 'Format':'tsv', 'FilterType':'filter', 'Configuration':['testname = value'] }
+        for instance in d['Instances']:
+            instance['InstanceName'] = nxOMSGenerateInventoryMof.protocol.MI_String(instance['InstanceName'])
+            instance['ClassName'] = nxOMSGenerateInventoryMof.protocol.MI_String(instance['ClassName'])
+            instance['Properties'] = nxOMSGenerateInventoryMof.protocol.MI_StringA(instance['Properties'])
+
+        codecs.open(self.mock_mof_path + 'generatedinventory' + '.mof', 'w', 'utf8').write("dummy")
+        codecs.open(self.mock_mof_path + 'generatedinventory' + '.conf', 'w', 'utf8').write("dummy")
+        self.assertTrue(nxOMSGenerateInventoryMof.Set_Marshall(**d) == [0],'Set('+repr(d)+') should return == [0]')
+        self.assertFalse(os.path.isfile(self.mock_mof_path + 'generatedinventory' + '.mof'))
+        self.assertFalse(os.path.isfile(self.mock_mof_path + 'generatedinventory' + '.conf'))
+
+    def testTestOMSGenerateInventoryMof(self):
+
+        d = { 'FeatureName': 'generatedinventory', 'Enable': True, 'Instances': [{ 'InstanceName': 'FileInventory', 'ClassName': 'MSFT_nxFileInventoryResource', 'Properties': [ 'DestinationPath = "/etc/*.conf";', 'Recurse=true;' ] }, { 'InstanceName': 'RegistryInventory', 'ClassName':'MSFT_nxRegistryInventoryResource', 'Properties': [ 'RegistryName=hkeylocal;' ] } ], 'RunIntervalInSeconds':300, 'Tag': 'Test', 'Format':'tsv', 'FilterType':'filter', 'Configuration':['testname = value'] }
+
+        for instance in d['Instances']:
+            instance['InstanceName'] = nxOMSGenerateInventoryMof.protocol.MI_String(instance['InstanceName'])
+            instance['ClassName'] = nxOMSGenerateInventoryMof.protocol.MI_String(instance['ClassName'])
+            instance['Properties'] = nxOMSGenerateInventoryMof.protocol.MI_StringA(instance['Properties'])
+
+        e = copy.deepcopy(d)
+        f = copy.deepcopy(d)
+
+        self.assertTrue(nxOMSGenerateInventoryMof.Test_Marshall(**d) == [-1],'Test('+repr(d)+') should return == [-1]')
+        self.assertFalse(os.path.isfile(self.mock_mof_path + 'generatedinventory' + '.mof'))
+
+        self.assertTrue(nxOMSGenerateInventoryMof.Set_Marshall(**e) == [0],'Set('+repr(e)+') should return == [0]')
+        self.assertTrue(nxOMSGenerateInventoryMof.Test_Marshall(**f) == [0],'Test('+repr(f)+') should return == [0]')
+        self.assertTrue(os.path.isfile(self.mock_mof_path + 'generatedinventory' + '.mof'))
+
+
+    def testGetOMSGenerateInventoryMof_default(self):
+        d = { 'FeatureName': 'generatedinventory', 'Enable': True, 'Instances': [{ 'InstanceName': 'FileInventory', 'ClassName': 'MSFT_nxFileInventoryResource', 'Properties': [ 'DestinationPath = "/etc/*.conf";', 'Recurse=true;' ] }, { 'InstanceName': 'RegistryInventory', 'ClassName':'MSFT_nxRegistryInventoryResource', 'Properties': [ 'RegistryName=hkeylocal;' ] } ], 'RunIntervalInSeconds':300, 'Tag': 'Test', 'Format':'tsv', 'FilterType':'filter', 'Configuration':['testname = value'] }
+        m=self.make_MI(0,**d)
+        g=nxOMSGenerateInventoryMof.Get_Marshall(**d)
+        print('GET '+ repr(g))
+        self.assertTrue(check_values(g, m)  ==  True, \
+        'Get('+repr(g)+' should return ==['+repr(m)+']')
+        self.assertFalse(os.path.isfile(self.mock_mof_path + 'generatedinventory' + '.mof'))
+
 
 # omsagent is not required to  be running.
 class nxOMSKeyMgmtTestCases(unittest2.TestCase):
@@ -4395,6 +4514,599 @@ class nxFileInventoryTestCases(unittest2.TestCase):
         for d in r[1]['__Inventory'].value:
             print d['DestinationPath'], d['Contents']
 
+class nxOMSAgentNPMConfigTestCases(unittest2.TestCase):
+    """
+    Test cases for nxOMSAgentNPMConfig.py
+    """
+
+    class TestOMSAgentUtil(nxNPMD.IOMSAgent):
+        def restart_oms_agent(self):
+            return True
+
+    class TestNPMAgentUtil(nxNPMD.IOMSAgent):
+        def binary_setcap(self, binaryPath):
+            return True
+
+    def WriteToFile(self, path, content):
+        dFile = open(path, 'w+')
+        dFile.write(content)
+        dFile.close()
+
+    def setUp(self):
+        """
+        Setup test resources
+        """
+        #time.sleep(1)
+        nxNPMD.CONFIG_PATH = '/var/tmp/etc/opt/microsoft/omsagent/conf/'
+        nxNPMD.SERVER_ADDRESS = '/var/tmp/run/npmdagent.sock'
+        nxNPMD.DSC_RESOURCE_VERSION_PATH = '/var/tmp/etc/opt/microsoft/omsagent/VERSION'
+        nxNPMD.AGENT_RESOURCE_VERSION_PATH = '/var/tmp/etc/opt/microsoft/omsagent/AGENTVERSION'
+        nxNPMD.PLUGIN_PATH = '/var/tmp/opt/microsoft/omsagent/plugin/'
+        nxNPMD.PLUGIN_CONF_PATH = '/var/tmp/etc/opt/microsoft/omsagent/conf/omsagent.d/'
+        nxNPMD.AGENT_BINARY_PATH = '/var/tmp/opt/microsoft/omsagent/'
+        nxNPMD.RESOURCE_MODULE_PATH = '/var/tmp/opt/microsoft/omsconfig/modules/NPM/'
+        nxNPMD.AGENT_SCRIPT_PATH = '/var/tmp/etc/opt/microsoft/omsagent/scipt.sh'
+        
+        self.config_type = 'UpdatedAgentConfig'
+        self.config_id = '12345'
+        self.contents = base64.b64encode('<Configuration></Configuration>')
+        self.content_checksum = md5.md5(self.contents).hexdigest().upper()
+        self.ensure_present = 'Present'
+        self.ensure_absent = 'Absent'
+        self.out_file = nxNPMD.CONFIG_PATH.__add__(nxNPMD.DEST_FILE_NAME)
+        self.server_address = nxNPMD.SERVER_ADDRESS
+
+        x64binaryPath = nxNPMD.RESOURCE_MODULE_PATH.__add__(nxNPMD.DSC_X64_AGENT_PATH)
+        x86binaryPath = nxNPMD.RESOURCE_MODULE_PATH.__add__(nxNPMD.DSC_X86_AGENT_PATH)
+        dscPluginPath = nxNPMD.RESOURCE_MODULE_PATH.__add__(nxNPMD.DSC_PLUGIN_PATH)
+        dscConfPath = nxNPMD.RESOURCE_MODULE_PATH.__add__(nxNPMD.DSC_PLUGIN_CONF_PATH)
+        
+        # remove files from directory
+        os.system('rm -rf /var/tmp/run;' +
+            'rm -rf /var/tmp/etc;'
+            'rm -rf /var/tmp/opt;'
+        )
+        os.system('mkdir -p ' + nxNPMD.CONFIG_PATH + ';'
+            'mkdir -p ' + '/var/tmp/run/' + ';'
+            'mkdir -p ' + nxNPMD.PLUGIN_PATH + ';'
+            'mkdir -p ' + nxNPMD.PLUGIN_CONF_PATH + ';'
+            'mkdir -p ' + x64binaryPath + ';'
+            'mkdir -p ' + x86binaryPath + ';'
+            'mkdir -p ' + dscPluginPath + ';'
+            'mkdir -p ' + dscConfPath + ';'
+            'echo testfile >> ' + x64binaryPath + 'binary;'
+            'echo testfile >> ' + x86binaryPath + 'binary;'
+            'echo testfile >> ' + dscPluginPath + 'plugin;'
+            'echo testfile >> ' + dscConfPath + 'config;'
+            'echo testfile >> ' + nxNPMD.AGENT_SCRIPT_PATH + ';'
+        )
+
+        self.WriteToFile(nxNPMD.DSC_RESOURCE_VERSION_PATH, '1.0')
+        self.WriteToFile(nxNPMD.AGENT_RESOURCE_VERSION_PATH, '1.0')
+
+        nxNPMD.OMS_ACTION = nxOMSAgentNPMConfigTestCases.TestOMSAgentUtil()
+        nxNPMD.NPM_ACTION = nxOMSAgentNPMConfigTestCases.TestNPMAgentUtil()
+
+        thread.start_new_thread(self.createUDSServer, ())
+    def tearDown(self):
+        """
+        Remove test resources.
+        """
+        # remove files from directory
+        os.system('rm -rf /var/tmp/run;' +
+            'rm -rf /var/tmp/etc;'
+        )
+        #time.sleep(1)
+
+    
+    def make_MI(self, retval, ConfigType, ConfigID, Contents, Ensure, ContentChecksum):
+        d=dict();
+        if ConfigType == None :
+            d['ConfigType'] = None
+        else :
+            d['ConfigType'] = nxNPMD.protocol.MI_String(ConfigType)
+        if ConfigID == None :
+            d['ConfigID'] = None
+        else :
+            d['ConfigID'] = nxNPMD.protocol.MI_String(ConfigID)
+        if Ensure == None :
+            d['Ensure'] = None
+        else :
+            d['Ensure'] = nxNPMD.protocol.MI_String(Ensure)
+        if Contents == None :
+            d['Contents'] = None
+        else :
+            d['Contents'] = nxNPMD.protocol.MI_String(Contents)
+        if ContentChecksum == None :
+            d['ContentChecksum'] = None
+        else :
+            d['ContentChecksum'] = nxNPMD.protocol.MI_String(ContentChecksum)
+        return retval,d
+
+    def readFile(self, path):
+        content = None
+        try:
+            dFile = codecs.open (path, encoding = 'utf8', mode = "r")
+            content = dFile.read()
+            dFile.close()
+        except IOError, error:
+            print "Exception opening file " + path + " Error Code: " + str(error.errno) + " Error: " + str(error) + error.strerror
+        return content
+
+    def DisableConfigUpdate(self):
+        # disable config update
+        self.WriteToFile(nxNPMD.CONFIG_PATH.__add__(nxNPMD.DEST_FILE_NAME), base64.b64decode(self.contents))
+
+    def createUDSServer(self):
+        # Make sure the socket does not already exist
+        try:
+            os.unlink(self.server_address)
+        except OSError:
+            if os.path.exists(self.server_address):
+                raise
+
+        # Create a UDS socket
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+
+        # Bind the socket to the port
+        sock.bind(self.server_address)
+
+        # Listen for incoming connections
+        sock.listen(1)
+
+        while True:
+            connection, client_address = sock.accept()
+            try:
+                # Receive the data in small chunks and retransmit it
+                while True:
+                    data = connection.recv(100)
+                    if not data:
+                        break
+            finally:
+                # Clean up the connection
+                connection.close()
+
+    def verifyFileContents(self, text):
+        content = self.readFile(nxNPMD.AGENT_BINARY_PATH.__add__('binary'))
+        print content, text
+        self.assertTrue(content == text, 'Contents written to file do not match')
+        content = self.readFile(nxNPMD.PLUGIN_PATH.__add__('plugin'))
+        self.assertTrue(content == text, 'Contents written to file do not match')
+        content = self.readFile(nxNPMD.PLUGIN_CONF_PATH.__add__('config'))
+        self.assertTrue(content == text, 'Contents written to file do not match')
+
+    def updateFileContents(self, text):
+        dFile = open(nxNPMD.AGENT_BINARY_PATH.__add__('binary'), 'w+')
+        dFile.write(text)
+        dFile.close()
+
+        dFile = open(nxNPMD.PLUGIN_PATH.__add__('plugin'), 'w+')
+        dFile.write(text)
+        dFile.close()
+
+        dFile = open(nxNPMD.PLUGIN_CONF_PATH.__add__('config'), 'w+')
+        dFile.write(text)
+        dFile.close()
+
+    def testGetUpdateAgentConfig(self):
+        r=nxNPMD.Get_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum)
+        print r
+        print self.make_MI([0], self.config_type, self.config_id, base64.b64decode(self.contents), self.ensure_present, self.content_checksum)
+        self.assertTrue(check_values(r,self.make_MI([0], self.config_type, self.config_id, base64.b64decode(self.contents), self.ensure_present, self.content_checksum)) == True,'nxNPMD.Get_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum)[0] should return == 0')
+
+
+    def testTestNewAgentConfig(self):
+        # disables check for binary update
+        nxNPMD.AGENT_RESOURCE_VERSION_PATH = '/var/tmp/etc/opt/microsoft/omsagent/VERSION'
+        r=nxNPMD.Test_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum)
+        print r
+        self.assertTrue(r == [-1],'nxNPMD.Test_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum) should return == -1')
+
+    def testTestUpdateConfigChecksumMismatch(self):
+        # disables check for binary update
+        nxNPMD.AGENT_RESOURCE_VERSION_PATH = '/var/tmp/etc/opt/microsoft/omsagent/VERSION'
+        nxNPMD.Set_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum)
+        r=nxNPMD.Test_Marshall(self.config_type, self.config_id, base64.b64encode('New config string'), self.ensure_present, self.content_checksum)
+        print r
+        self.assertTrue(r == [0],'nxNPMD.Test_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum) should return == 0')
+
+    def testTestUpdateNewConfig(self):
+        # disables check for binary update
+        nxNPMD.AGENT_RESOURCE_VERSION_PATH = '/var/tmp/etc/opt/microsoft/omsagent/VERSION'
+        nxNPMD.Set_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum)
+        newContent = 'New config string'
+        newChecksum = md5.md5(base64.b64encode(newContent)).hexdigest().upper()
+        r=nxNPMD.Test_Marshall(self.config_type, self.config_id, base64.b64encode(newContent), self.ensure_present, newChecksum)
+        print r
+        self.assertTrue(r == [-1],'nxNPMD.Test_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum) should return == -1')
+
+    def testTestSolutionEnable(self):
+        self.DisableConfigUpdate()
+
+        # remove agent resource version file
+        os.unlink(nxNPMD.AGENT_RESOURCE_VERSION_PATH)
+        r=nxNPMD.Test_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum)
+        self.assertTrue(r == [-1],'nxNPMD.Test_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum) should return == -1')
+
+    def testTestBinaryUpdate(self):
+        self.DisableConfigUpdate()
+        # update dsc resource version file
+        self.WriteToFile(nxNPMD.DSC_RESOURCE_VERSION_PATH, '1.1')
+
+        r=nxNPMD.Test_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum)
+        self.assertTrue(r == [-1],'nxNPMD.Test_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum) should return == -1')
+
+    def testTestNoChange(self):
+        self.DisableConfigUpdate()
+
+        # disables check for binary update
+        nxNPMD.AGENT_RESOURCE_VERSION_PATH = '/var/tmp/etc/opt/microsoft/omsagent/VERSION'
+        r=nxNPMD.Test_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum)
+        self.assertTrue(r == [0],'nxNPMD.Test_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum) should return == 0')
+
+    def testTestEnsureAbsentNoAgent(self):
+        # remove agent resource version file
+        os.unlink(nxNPMD.AGENT_RESOURCE_VERSION_PATH)
+        r=nxNPMD.Test_Marshall(self.config_type, self.config_id, self.contents, self.ensure_absent, self.content_checksum)
+        self.assertTrue(r == [0],'nxNPMD.Test_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum) should return == 0')
+
+    def testTestEnsureAbsentSolutionPurge(self):
+        r=nxNPMD.Test_Marshall(self.config_type, self.config_id, self.contents, self.ensure_absent, self.content_checksum)
+        self.assertTrue(r == [-1],'nxNPMD.Test_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum) should return == -1')
+
+
+    def testSetNewAgentConfig(self):
+        # disables check for binary update
+        nxNPMD.AGENT_RESOURCE_VERSION_PATH = '/var/tmp/etc/opt/microsoft/omsagent/VERSION'
+        r=nxNPMD.Set_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum)
+        print r
+        self.assertTrue(r == [0],'nxNPMD.Set_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum) should return == 0')
+        content = self.readFile(self.out_file)
+        self.assertTrue(content == base64.b64decode(self.contents), 'Contents written to file do not match')
+
+    def testSetUpdateConfigChecksumMismatch(self):
+        # disables check for binary update
+        nxNPMD.AGENT_RESOURCE_VERSION_PATH = '/var/tmp/etc/opt/microsoft/omsagent/VERSION'
+        newStr = 'New config string'
+        r=nxNPMD.Set_Marshall(self.config_type, self.config_id, base64.b64encode(newStr), self.ensure_present, self.content_checksum)
+        print r
+        self.assertTrue(r == [-1],'nxNPMD.Set_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum) should return == -1')
+        content = self.readFile(self.out_file)
+        print content
+        self.assertTrue(content != newStr, 'Contents written to file do not match')
+
+    def testSetUpdateNewConfig(self):
+        # disables check for binary update
+        nxNPMD.AGENT_RESOURCE_VERSION_PATH = '/var/tmp/etc/opt/microsoft/omsagent/VERSION'
+        nxNPMD.Set_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum)
+        newContent = 'New config string'
+        newChecksum = md5.md5(base64.b64encode(newContent)).hexdigest().upper()
+        r=nxNPMD.Set_Marshall(self.config_type, self.config_id, base64.b64encode(newContent), self.ensure_present, newChecksum)
+        print r
+        self.assertTrue(r == [0],'nxNPMD.Set_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum) should return == 0')
+        content = self.readFile(self.out_file)
+        self.assertTrue(newContent == content, 'Contents written to file do not match')
+
+    def testSetSolutionEnable(self):
+        self.DisableConfigUpdate()
+        # remove agent resource version file
+        os.unlink(nxNPMD.AGENT_RESOURCE_VERSION_PATH)
+        r=nxNPMD.Set_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum)
+        self.assertTrue(r == [0],'nxNPMD.Set_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum) should return == 0')
+        
+        #verify file contents
+        self.verifyFileContents('testfile\n')
+
+    def testSetBinaryUpdate(self):
+        self.DisableConfigUpdate()
+
+        # update dsc resource version file
+        self.WriteToFile(nxNPMD.DSC_RESOURCE_VERSION_PATH, '1.1')
+
+        r=nxNPMD.Set_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum)
+
+        #change contents
+        self.updateFileContents('newText')
+
+        # making sure we are able to override files
+        self.WriteToFile(nxNPMD.DSC_RESOURCE_VERSION_PATH, '1.2')
+
+        r=nxNPMD.Set_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum)        
+        self.assertTrue(r == [0],'nxNPMD.Set_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum) should return == 0')
+
+        #verify file contents
+        self.verifyFileContents('testfile\n')
+
+    def testSetEnsureAbsentSolutionPurge(self):
+        r=nxNPMD.Set_Marshall(self.config_type, self.config_id, self.contents, self.ensure_absent, self.content_checksum)
+        self.assertTrue(r == [0],'nxNPMD.Set_Marshall(self.config_type, self.config_id, self.contents, self.ensure_present, self.content_checksum) should return == 0')
+
+        # make sure files are not present
+        if os.path.exists(nxNPMD.AGENT_BINARY_PATH.__add__('binary')):
+            self.assertTrue(False, 'binary file exists')
+        if os.path.exists(nxNPMD.AGENT_RESOURCE_VERSION_PATH):
+            self.assertTrue(False, 'agent resource version file exists')
+
+
+class nxOMSAutomationWorkerTestCases(unittest2.TestCase):
+    """
+    Test Case for nxOMSAutomationWorker.py
+    """
+    workspaceId = 'cfd4ef08-4011-428a-8947-0c2f4605980f'
+    agent_id = 'cfd4ef08-4011-428a-8947-0c2f4605980g'
+    AzureDnsAgentSvcZone = 'agentsvc.azure-automation.net'
+    tempWorkingDir = os.path.join(os.getcwd(), 'Scripts/Tests/temp')
+    dummyFileLocation = os.path.join(os.getcwd(), 'Scripts/Tests/dummy_nxOMSAutomationWorker_files')
+    nxOMSAutomationWorker.WORKER_STATE_DIR = tempWorkingDir
+    nxOMSAutomationWorker.WORKER_CONF_FILE_PATH = os.path.join(tempWorkingDir, 'worker.conf')
+    nxOMSAutomationWorker.WORKER_STATE_FILE_PATH = os.path.join(tempWorkingDir, 'state.conf')
+    nxOMSAutomationWorker.REGISTRATION_FILE_PATH = os.path.join(os.getcwd(),
+        '../../nxOMSAutomationWorker/automationworker/scripts/register_oms.py')
+    nxOMSAutomationWorker.HYBRID_WORKER_START_PATH = os.path.join(dummyFileLocation, 'main.py')
+    nxOMSAutomationWorker.DSC_RESOURCE_VERSION_FILE = os.path.join(dummyFileLocation, 'VERSION')
+    nxOMSAutomationWorker.LOCAL_LOG_LOCATION = os.path.join(tempWorkingDir, 'nxOMSAutomationWorker.log')
+    nxOMSAutomationWorker.OMS_ADMIN_CONFIG_FILE = os.path.join(dummyFileLocation, 'omsadmin.conf')
+
+    def setUp(self):
+        """
+        Setup Test resources
+        """
+        if not os.path.isdir(self.tempWorkingDir):
+            os.mkdir(self.tempWorkingDir)
+
+    def tearDown(self):
+        """
+        Remove test resoruces
+        """
+        self.kill_all_workers()
+        shutil.rmtree(self.tempWorkingDir)
+
+    def find_all_worker_processes(self):
+        """
+        Finds all the process that were called with 'python' as the command and <workspaceId> in its arguments
+        These are sufficient conditions for finding all the worker processes that were started by this test instance
+        :return: list[int] of the PID's that matched the above condition
+        """
+        retval = []
+        pc = subprocess.Popen(['ps', '-o', 'pid,args', '-C', 'python'], stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE)
+        result, error = pc.communicate()
+        if pc.returncode != 0:
+            return
+        splitResults = result.split("\n")
+        for s in splitResults:
+            if s.__contains__(self.workspaceId):
+                striped = str.strip(s)
+                try:
+                    i = int(striped.split(' ')[0])
+                    retval.append(i)
+                except:
+                    pass
+        return retval
+
+    def kill_all_workers(self):
+        pids = self.find_all_worker_processes()
+        if pids is None:
+            return
+        for pid in pids:
+            os.kill(pid, signal.SIGTERM)
+
+    def wait_for_worker_to_start(self):
+        for i in range(1, 5, 2):
+            time.sleep(i)
+            pids = self.find_all_worker_processes()
+            if pids is not None and len(pids) > 0:
+                return
+        raise Exception
+
+    def set_automation_worker_state(self, isWorkerConfFilePresent, isStateConfFilePresent, isWorkerLatest, isWorkerRunning):
+        """
+        This function puts the system in a specific state based on the input
+        :param isWorkerConfFilePresent: if set to True, worker.conf will be present, false otherwise
+        :param isStateConfFilePresent: if set to True, state.conf file will be present, false otherwise
+        :param isWorkerLatest: if set to True, worker version will be the latest version, else the current runnning worker
+            will have an older version number than the worker available on disk
+        :param isWorkerRunning: if set to True, a worker daemon with be running, else it will kill existing worker daemon
+        :return: void
+        """
+        latestVersion = nxOMSAutomationWorker.read_resoruce_version_file()
+
+        # create new registration file, delete later if required
+        retcode = subprocess.call(
+            ["python", nxOMSAutomationWorker.REGISTRATION_FILE_PATH, "--register", "-w", self.workspaceId, "-a",
+             self.agent_id,
+             "-c", nxOMSAutomationWorker.OMS_CERTIFICATE_PATH, "-k",
+             nxOMSAutomationWorker.OMS_CERT_KEY_PATH, "-f",
+             nxOMSAutomationWorker.WORKING_DIRECTORY_PATH, "-s",
+             nxOMSAutomationWorker.WORKER_STATE_DIR, "-e", self.AzureDnsAgentSvcZone, "-p",
+             nxOMSAutomationWorker.PROXY_CONF_PATH_NEW, "-g", nxOMSAutomationWorker.KEYRING_PATH,
+             "--mock_powershelldsc_test"])
+        if retcode != 0:
+            raise Exception
+
+        # isWorkerRunning region
+        # Always kill the worker and start a dummy instance
+        self.kill_all_workers()
+
+        if isWorkerRunning:
+            if isWorkerLatest:
+                nxOMSAutomationWorker.start_daemon(
+                    ["python", nxOMSAutomationWorker.HYBRID_WORKER_START_PATH,
+                     nxOMSAutomationWorker.WORKER_CONF_FILE_PATH,
+                     self.workspaceId, latestVersion])
+                self.wait_for_worker_to_start()
+            else:
+                nxOMSAutomationWorker.start_daemon(
+                    ["python", nxOMSAutomationWorker.HYBRID_WORKER_START_PATH,
+                     nxOMSAutomationWorker.WORKER_CONF_FILE_PATH,
+                     self.workspaceId, "0.9"])
+                self.wait_for_worker_to_start()
+        # isWorkerLatest region
+        elif isWorkerLatest:
+            nxOMSAutomationWorker.start_daemon(
+                ["python", nxOMSAutomationWorker.HYBRID_WORKER_START_PATH,
+                 nxOMSAutomationWorker.WORKER_CONF_FILE_PATH,
+                 self.workspaceId, latestVersion])
+            self.wait_for_worker_to_start()
+            nxOMSAutomationWorker.kill_hybrid_worker()
+        else:
+            nxOMSAutomationWorker.start_daemon(
+                ["python", nxOMSAutomationWorker.HYBRID_WORKER_START_PATH,
+                 nxOMSAutomationWorker.WORKER_CONF_FILE_PATH,
+                 self.workspaceId, "0.9"])
+            self.wait_for_worker_to_start()
+            nxOMSAutomationWorker.kill_hybrid_worker()
+
+        if not isStateConfFilePresent:
+            try:
+                os.remove(nxOMSAutomationWorker.WORKER_STATE_FILE_PATH)
+            except OSError:
+                pass
+
+        if not isWorkerConfFilePresent:
+            os.remove(nxOMSAutomationWorker.WORKER_CONF_FILE_PATH)
+
+    def verify_automation_worker_state(self, resourceEnabled):
+        if resourceEnabled:
+            # try to read the oms registration config file
+            if not os.path.isfile(nxOMSAutomationWorker.WORKER_CONF_FILE_PATH):
+                return False
+            # try to verify whether the worker version is the latest, also ensures the existence of the worker state file
+            try:
+                workerIsLatest = nxOMSAutomationWorker.worker_is_latest()
+            except:
+                workerIsLatest = False
+            if not workerIsLatest:
+                return False
+            if nxOMSAutomationWorker.verify_hybrid_worker() == -1:
+                return False
+            return True
+        else:
+            # resourceEnabled == false
+            # Hybrid worker should not be running
+
+            try:
+                retval = nxOMSAutomationWorker.verify_hybrid_worker()
+            except:
+                retval = -1
+            if retval != -1:
+                return False
+            # worker state file should not exist
+            if os.path.exists(nxOMSAutomationWorker.WORKER_STATE_FILE_PATH):
+                return False
+            # worker registration file should not exist
+            if os.path.exists(nxOMSAutomationWorker.WORKER_CONF_FILE_PATH):
+                return False
+            return True
+
+    def make_MI(self, retval, WorkspaceId, Enabled, AzureDnsAgentSvcZone):
+        d = dict()
+        d['Workspace'] = nxOMSAutomationWorker.protocol.MI_String(WorkspaceId)
+        d['Enabled'] = nxOMSAutomationWorker.protocol.MI_Boolean(Enabled)
+        d['AzureDnsAgentSvcZone'] = nxOMSAutomationWorker.protocol.MI_String(AzureDnsAgentSvcZone)
+        return retval, d
+
+    # States for the Linux hybrid worker are a vector of the following
+    # [
+    #   is worker.conf file present,
+    #   is state.conf file present
+    #   is the worker version in the state file is the same as the one in the resource,
+    #   is the Linux Hybrid Worker running
+    # ]
+    all_possible_states_of_hybrid_worker = [
+        [False, False, False, False],
+        [False, False, False, True],
+        [False, False, True, False],
+        [False, False, True, True],
+        [False, True, False, False],
+        [False, True, False, True],
+        [False, True, True, False],
+        [False, True, True, True],
+        [True, False, False, False],
+        [True, False, False, True],
+        [True, False, True, False],
+        [True, False, True, True],
+        [True, True, False, False],
+        [True, True, False, True],
+        [True, True, True, False],
+        [True, True, True, True],
+    ]
+
+    def expected_test_marshall_return_value(self, state, enabledFlag):
+        isWorkerConfFilePresent = state[0]
+        isStateConfFilePresent = state[1]
+        isWorkerLatest = state[2]
+        isWorkerRunning = state[3]
+        if enabledFlag:
+            if isWorkerConfFilePresent is True and isStateConfFilePresent is True and isWorkerLatest is True \
+                    and isWorkerRunning is True:
+                return [0]
+            else:
+                return [-1]
+        else:
+            if isWorkerConfFilePresent is False and isStateConfFilePresent is False:
+                return [0]
+            else:
+                return [-1]
+
+    def test_Test_Marshall_enabledFlag_true(self):
+        """
+        For any given state verify whether Test_Marshall returns the expected output
+        """
+        enabledFlag = True
+        for state in self.all_possible_states_of_hybrid_worker:
+            self.set_automation_worker_state(*state)
+            expectedValue = self.expected_test_marshall_return_value(state, enabledFlag)
+            self.assertTrue(
+                nxOMSAutomationWorker.Test_Marshall(self.workspaceId, enabledFlag, self.AzureDnsAgentSvcZone)
+                == expectedValue,
+                "Test should return %s for state %s" % (str(expectedValue), str(state)))
+
+    def test_Test_Marshall_enabledFlag_false(self):
+        """
+        For any given state verify whether Test_Marshall returns the expected output
+        """
+        enabledFlag = False
+        for state in self.all_possible_states_of_hybrid_worker:
+            self.set_automation_worker_state(*state)
+            expectedValue = self.expected_test_marshall_return_value(state, enabledFlag)
+            self.assertTrue(
+                nxOMSAutomationWorker.Test_Marshall(self.workspaceId, enabledFlag, self.AzureDnsAgentSvcZone)
+                == expectedValue,
+                "Test should return %s for state %s" % (str(expectedValue), str(state)))
+
+    def test_Set_Marshall_enabledFlag_true(self):
+        """
+        Verify whether the Set_Marshall puts the system in the proper final state for any given initial state
+        """
+        enabledFlag = True
+        mock_worker_config_file = True
+        for state in self.all_possible_states_of_hybrid_worker:
+            self.set_automation_worker_state(*state)
+            retval = nxOMSAutomationWorker.set_marshall_helper(self.workspaceId, enabledFlag, self.AzureDnsAgentSvcZone,
+                                                               mock_worker_config_file)
+            # Set_Marshall should always succeed regardless of the initial state
+            self.assertTrue(retval == [0], "Retval should be for [0] Set_Marshall. Initial state was %s" % str(state))
+            # Verify that we are indeed in the proper final state
+            self.assertTrue(self.verify_automation_worker_state(enabledFlag),
+                            "Set failed for initial state %s" %(str(state)))
+
+    def test_Set_Marshall_enabledFlag_false(self):
+        """
+        Verify whether the Set_Marshall puts the system in the proper final state for any given initial state
+        """
+        enabledFlag = False
+        mock_worker_config_file = True
+        for state in self.all_possible_states_of_hybrid_worker:
+            self.set_automation_worker_state(*state)
+            retval = nxOMSAutomationWorker.set_marshall_helper(self.workspaceId, enabledFlag, self.AzureDnsAgentSvcZone,
+                                                               mock_worker_config_file)
+            # Set_Marshall should always succeed regardless of the initial state
+            self.assertTrue(retval == [0], "Retval should be for [0] Set_Marshall. Initial state was %s" % str(state))
+            # Verify that we are indeed in the proper final state
+            self.assertTrue(self.verify_automation_worker_state(enabledFlag), 'Set failed for initial state %s'
+                            %(str(state)))
+
 
 ######################################
 if __name__ == '__main__':
@@ -4416,10 +5128,13 @@ if __name__ == '__main__':
     s16=unittest2.TestLoader().loadTestsFromTestCase(nxMySqlUserTestCases)
     s17=unittest2.TestLoader().loadTestsFromTestCase(nxMySqlGrantTestCases)
     s18=unittest2.TestLoader().loadTestsFromTestCase(nxOMSSyslogTestCases)
-    s19=unittest2.TestLoader().loadTestsFromTestCase(nxOMSAgentTestCases)
+    s19=unittest2.TestLoader().loadTestsFromTestCase(nxOMSPerfCounterTestCases)
     s20=unittest2.TestLoader().loadTestsFromTestCase(nxOMSCustomLogTestCases)
     s21=unittest2.TestLoader().loadTestsFromTestCase(nxOMSKeyMgmtTestCases)
     s22=unittest2.TestLoader().loadTestsFromTestCase(nxFileInventoryTestCases)
-    alltests = unittest2.TestSuite([s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12,s13,s14,s15,s16,s17,s18,s19,s20])
+    s23=unittest2.TestLoader().loadTestsFromTestCase(nxOMSGenerateInventoryMofTestCases)
+    s24=unittest2.TestLoader().loadTestsFromTestCase(nxOMSAgentNPMConfigTestCases)
+    s25 = unittest2.TestLoader().loadTestsFromTestCase(nxOMSAutomationWorkerTestCases)
+    alltests = unittest2.TestSuite([s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12,s13,s14,s15,s16,s17,s18,s19,s20,s23,s24,s25])
     unittest2.TextTestRunner(stream=sys.stdout,verbosity=3).run(alltests)
     

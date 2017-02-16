@@ -116,7 +116,10 @@ def Inventory_Marshall(Name, Controller, Enabled, State):
         srv['Name'] = protocol.MI_String(srv['Name'])
         srv['Controller'] = protocol.MI_String(srv['Controller'])
         srv['Enabled'] = protocol.MI_Boolean(srv['Enabled'])
-        srv['State'] = protocol.MI_String(srv['State'])
+        if 'running' in srv['State'].lower():
+            srv['State'] = protocol.MI_String('Running')
+        else:
+            srv['State'] = protocol.MI_String('Stopped')
         srv['Path'] = protocol.MI_String(srv['Path'])
         srv['Description'] = protocol.MI_String(srv['Description'])
         srv['Runlevels'] = protocol.MI_String(srv['Runlevels'])
@@ -1463,13 +1466,14 @@ def SystemdGetAll(sc):
     # occurs.
     cmd = 'systemctl -a list-unit-files ' + Name
     code, txt = RunGetOutputNoStderr(cmd, False, True)
-    if code != 0:
+    if code != 0: # Serious problem, return False
         return False
     sname = ''
     # Get the last service name from the output.
     m = re.search(r'.*?\n(.*?)[.]service.*?\n', txt, re.M)
-    if m is not None:
-        sname = m.group(1)
+    if m is None: # The result is empty, return True.
+        return True
+    sname = m.group(1)
     cmd = 'systemctl -a --no-pager --no-legend -p "Names,WantedBy,Description,SubState,FragmentPath,UnitFileState" show ' + sname
     code, txt = RunGetOutputNoStderr(cmd, False, True)
     if code != 0: 
