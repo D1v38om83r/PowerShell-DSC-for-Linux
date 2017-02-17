@@ -377,7 +377,7 @@ def start_daemon(args):
     # Will start the Linux Hybrid Worker as a Popen process and wait forever for it to exit
     os.chdir("/")
     os.setsid()
-    os.umask(077)
+    os.umask(003)
     os.close(1)
     os.close(2)
     try:
