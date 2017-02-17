@@ -363,6 +363,7 @@ def nxautomation_user_exists():
 
 def start_daemon(args):
     # Forks a subprocess from args
+    log(DEBUG,str(args))
     try:
         pid = os.fork()
         if pid > 0:
