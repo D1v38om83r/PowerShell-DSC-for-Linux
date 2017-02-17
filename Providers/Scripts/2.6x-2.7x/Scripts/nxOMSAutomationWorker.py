@@ -204,7 +204,7 @@ KEYRING_PATH="/etc/opt/omi/conf/omsconfig/keyring.gpg"
 LOCAL_LOG_LOCATION = "/var/opt/microsoft/omsagent/log/nxOMSAutomationWorker.log"
 
 # permisson level rw- rw- r--
-FILE_PERMISSION_LEVEL = 0o664
+FILE_PERMISSION_LEVEL = 0o774
 
 AUTOMATION_USER = "nxautomation"
 
